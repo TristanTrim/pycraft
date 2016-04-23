@@ -232,7 +232,7 @@ class World:
             generate.
         """
         x, y, z = position
-        vertex_data = cube_vertices(x, y, z, 0.5)
+        vertex_data = cube_vertices(x, y, z, 1)
         shade_data = cube_shade(1, 1, 1, 1)
         texture_data = block.texture
         self._shown[position] = self.batch.add(
