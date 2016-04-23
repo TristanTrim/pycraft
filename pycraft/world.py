@@ -13,8 +13,8 @@ from pyglet.graphics import Batch, TextureGroup
 from pyglet.window import mouse
 
 from pycraft.objects import brick, grass, sand, stone
-from pycraft.util import normalize, sectorize, reverse_sectorize, \
-                         cube_vertices, cube_shade
+from pycraft.util import normalize, sectorize, reverse_sectorize,       \
+                         cube_vertices, cube_shade, batch_cube_vertices
 from pycraft.shader import Shader
 
 simplex_noise2 = SimplexNoise(256).noise2
@@ -161,7 +161,7 @@ class World:
         if position in self.objects:
             self.remove_block(position, immediate)
         self.objects[position] = texture
-        self.sectors.setdefault(sectorize(position), []).append(position)
+        self.sectors.setdefault(sectorize(position), [[],False])[0].append(position)
         if immediate:
             if self.exposed(position):
                 self.show_block(position)
@@ -178,7 +178,9 @@ class World:
             Whether or not to immediately remove block from canvas.
         """
         del self.objects[position]
-        self.sectors[sectorize(position)].remove(position)
+        # if all the blocks get removed from a sector the sector will stay in
+        # sectors as a 'ghost sector' or something. I don't know if this matters.
+        self.sectors[sectorize(position)][0].remove(position)
         if immediate:
             if position in self.shown:
                 self.hide_block(position)
@@ -202,7 +204,7 @@ class World:
                 if key in self.shown:
                     self.hide_block(key)
 
-    def show_block(self, position, immediate=True):
+    def show_block(self, position):
         """Show the block at the given `position`. This method assumes the
         block has already been added with add_block()
 
@@ -215,10 +217,7 @@ class World:
         """
         texture = self.objects[position]
         self.shown[position] = texture
-        if immediate:
-            self._show_block(position, texture)
-        else:
-            self.show_hide_queue[position] = True
+        self._show_block(position, texture)
 
     def _show_block(self, position, block):
         """Private implementation of the `show_block()` method.
@@ -233,6 +232,8 @@ class World:
         """
         x, y, z = position
         vertex_data = cube_vertices(x, y, z, 0.5)
+        self.__show_block(position,vertex_data,block)
+    def __show_block(self,position,vertex_data,block):
         shade_data = cube_shade(1, 1, 1, 1)
         texture_data = block.texture
         self._shown[position] = self.batch.add(
@@ -241,7 +242,7 @@ class World:
             ('c3f/static', shade_data),
             ('t2f/static', texture_data))
 
-    def hide_block(self, position, immediate=True):
+    def hide_block(self, position):
         """Hide the block at the given `position`. Hiding does not remove the
         block from the world.
 
@@ -253,28 +254,15 @@ class World:
             Whether or not to immediately remove the block from the canvas.
         """
         self.shown.pop(position)
-        if immediate:
-            self._hide_block(position)
-        else:
-            self.show_hide_queue[position] = False
-
-    def _hide_block(self, position):
-        """Private implementation of the 'hide_block()` method."""
         self._shown.pop(position).delete()
 
     def show_sector(self, sector):
         """Ensure all blocks in the given sector that should be shown are drawn
         to the canvas.
         """
-        positions = self.sectors.get(sector, [])
-        if positions:
-            for position in positions:
-                if position not in self.shown and self.exposed(position):
-                    self.show_block(position, False)
-        else:
+        if not sector in self.sectors:
             self.generate_sector(sector)
-            self.show_sector(sector)
-            
+        self.show_hide_queue[sector]=True
 
     def generate_sector(self, sector):
         """Generate blocks within sector using simplex_noise2
@@ -289,15 +277,12 @@ class World:
             # add the safety stone floor.
             # don't want anyone falling into the ether.
             self.add_block((x, 0 - 3, z), stone, immediate=False)
-            
 
     def hide_sector(self, sector):
         """Ensure all blocks in the given sector that should be hidden are
         removed from the canvas.
         """
-        for position in self.sectors.get(sector, []):
-            if position in self.shown:
-                self.hide_block(position, False)
+        self.show_hide_queue[sector]=False
 
     def change_sectors(self, before, after):
         """Move from sector `before` to sector `after`. A sector is a
@@ -327,12 +312,20 @@ class World:
 
     def _dequeue(self):
         """Pop the top function from the internal queue and call it."""
-        position,show = self.show_hide_queue.popitem(last=False)
-        shown = position in self._shown
-        if show and not shown:
-            self._show_block(position,self.objects[position])
-        elif shown and not show:
-            self._hide_block(position)
+        sector,show = self.show_hide_queue.popitem(last=False)
+        try:
+            positions,shown = self.sectors[sector]
+        except KeyError:
+            self.show_hide_queue[sector] = show
+        else:
+            print("drawing sector {}".format(str(sector)))
+            if show and not shown:
+                vertex_datas = batch_cube_vertices(positions)
+                for position,vertex_data in zip(positions,vertex_datas):
+                    self.__show_block(position,vertex_data,self.objects[position])
+            elif shown and not show:
+                for position in positions:
+                    self.hide_block(position)
             
     def process_queue(self, ticks_per_sec):
         """Process the entire queue while taking periodic breaks. This allows

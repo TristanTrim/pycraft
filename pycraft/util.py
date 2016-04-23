@@ -1,3 +1,4 @@
+import numpy as np
 # Size of sectors used to ease block loading.
 SECTOR_SIZE = 16
 
@@ -18,6 +19,22 @@ def cube_vertices(x, y, z, n):
         x + n, y - n, z - n, x - n, y - n, z - n, x - \
         n, y + n, z - n, x + n, y + n, z - n,  # back
     ]
+
+generic_cube_verts = np.array([
+         -.5,  +.5,  -.5, -.5,  +.5,  +.5, +.5,  +.5,  +.5, +.5,  +.5,  -.5, # top 
+         -.5,  -.5,  -.5, +.5,  -.5,  -.5, +.5,  -.5,  +.5, -.5,  -.5,  +.5, # bottom
+         -.5,  -.5,  -.5, -.5,  -.5,  +.5, -.5,  +.5,  +.5, -.5,  +.5,  -.5, # left
+         +.5,  -.5,  +.5, +.5,  -.5,  -.5, +.5,  +.5,  -.5, +.5,  +.5,  +.5, # right
+         -.5,  -.5,  +.5, +.5,  -.5,  +.5, +.5,  +.5,  +.5, -.5,  +.5,  +.5, # front
+         +.5,  -.5,  -.5, -.5,  -.5,  -.5, -.5,  +.5,  -.5, +.5,  +.5,  -.5, # back
+    ])  
+
+def batch_cube_vertices(positions):
+    number_of_cubes = len(positions)
+    offsets = np.expand_dims(np.array(positions),1)
+    batch_of_cubes = np.tile(generic_cube_verts,number_of_cubes).reshape(number_of_cubes,24,3)
+    shifted_cubes = batch_of_cubes + offsets
+    return shifted_cubes.reshape(number_of_cubes,72).tolist()
 
 
 def cube_shade(x, y, z, n):
